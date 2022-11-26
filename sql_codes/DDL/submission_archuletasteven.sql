@@ -89,7 +89,6 @@ CREATE TABLE temp_t
     order_date DATE,
     ship_date DATE,
     discount DECIMAL(4,2),
-    offender_sex CHAR(1),
     ship_mode VARCHAR(25),
     shipping VARCHAR(30),
     customer_feedback VARCHAR(20),
@@ -102,8 +101,8 @@ CREATE TABLE temp_t
     job_title VARCHAR(50),
     phone_number VARCHAR(20),
     email_address VARCHAR(50),
-	city VARCHAR(50),
-    country VARCHAR(25),
+	city VARCHAR(25),
+    country VARCHAR(40),
     state VARCHAR(40),
 	customer_address VARCHAR(50),
 	postal_code INTEGER,
@@ -154,8 +153,8 @@ CREATE TABLE vehicles_t
     job_title VARCHAR(50),
     phone_number VARCHAR(20),
     email_address VARCHAR(50),
-	city VARCHAR(50),
-    country VARCHAR(25),
+	city VARCHAR(25),
+    country VARCHAR(40),
     state VARCHAR(40),
 	customer_address VARCHAR(50),
 	postal_code INTEGER,
@@ -224,8 +223,8 @@ CREATE TABLE customer_t
     job_title VARCHAR(50),
     phone_number VARCHAR(20),
     email_address VARCHAR(50),
-	city VARCHAR(50),
-    country VARCHAR(25),
+	city VARCHAR(25),
+    country VARCHAR(40),
     state VARCHAR(40),
 	customer_address VARCHAR(50),
 	postal_code INTEGER,
@@ -272,7 +271,6 @@ BEGIN
     order_date,
     ship_date,
     discount,
-    offender_sex,
     ship_mode,
     shipping,
     customer_feedback,
@@ -307,7 +305,6 @@ SELECT
     order_date,
     ship_date,
     discount,
-    offender_sex,
     ship_mode,
     shipping,
     customer_feedback,
@@ -468,12 +465,22 @@ END;
 -----------------------------------------------------------------------------------------------------------------------------------*/
 
 -- [5] Ingesting the data:
--- This quarterly_temp_dump file will load the subsequent quarter's-worth of data (and since previous data is already in the temp_t file, it should not be reloaded).
--- Truncate is like a "refresh"; Truncate empties the temporary table, which will drop the previous quarter's data dump. Then the subsequest quarter's data can be appended.
+-- --------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-- WEEKLY DATA DUMP (weekly_temp_dump.sql) IS STORED IN THE PROCEDURES DIRECTORY 
+-- This weekly_temp_dump file will load subsequent week's-worth of data (and since previous data is already in the temp_t file, it should not be reloaded).
+
+-- FUNCTIONALITY: 	Truncate is like a "refresh"; Truncate empties the temporary table, which will drop the previous week's data dump. 
+-- 					Then the subsequest week's data can be appended. 
+--                  Call the stored procedures to ingest the data into a separate tables; Change the argument in report_p(n) to (n = 1,2,3,4) as needed for weekly dumps.
+-- OBSERVATIONS:	LOCAL INFILE takes in the PATH of the flat file (.csv); 
+-- 					Becasue all of the dump files are within the same folder, all that needs to be changed for future dumps is: w1,w2,w3,w4 (for that week's data dump).
+-- 					Run the ingestion code four (4) times because four (4) weeks of data are present as four (4) .csv files; call all the stored procedures four (4) times.
+-- INSIGHTS:        .csv files are separated by commas; data may be in the form of strings ""; and new rows begin on a new line '\n'; the header LINE 1 is ignored
 -- --------------------------------------------------------------------------------------------------------------------------------------------------------------------
 TRUNCATE temp_t;
 
-LOAD DATA LOCAL INFILE 'C:/Users/steve/Documents/SQL_and_Databases/SQL_Database_Modelling_and_Architecture_Final_Project/Data/new_wheels_sales_qtr_1.csv' -- w1,w2,w3,w4 to load that week's data
+
+LOAD DATA LOCAL INFILE 'C:/Users/steve/Documents/SQL_and_Databases/SQL_Database_Modelling_and_Architecture_Final_Project/Data/new_wheels_sales_qtr_1.csv' -- qtr_2, qtr_3, qtr_4 to load that quarter's data
 INTO TABLE temp_t
 FIELDS TERMINATED by ','
 OPTIONALLY ENCLOSED BY '"' 
@@ -484,7 +491,7 @@ call vehicles_p();
 call customer_p();
 call product_p();
 call shipper_p();
-call order_p();
+call order_p(1);
 
 /* Note: 
 
@@ -504,31 +511,75 @@ call order_p();
 -----------------------------------------------------------------------------------------------------------------------------------*/
 
 -- [6] Creating the views:
-
-/*Note: 
-
----> If needed revisit the videos: Week-2: Data Modeling and Architecture: Creating views for answers to business questions
----> Also revisit the codes used to create views for the gl_eats database. 
-	 This will help in getting a better understanding of the creation of views.*/
-
--- Syntax to create view-
-
--- To drop the views if already exists- 
-DROP VIEW IF EXISTS view_name;
-
--- To create a view-
-CREATE VIEW view_name AS
-    SELECT
-	n1.column_name1,
-    n2.column_name2,
-    ..
-    ..
-    ..
-FROM table_name1 n1
-	INNER JOIN table_name2 n2
-	    ON n1.column_name1 = n2.column_name2;
+-- FUNCTIONALITY: Without occupying any space or taking up memory, stored views serve as "virtual tables", within which data engineers can hide/secure
+--                certain elements while creating a read access only experience for the end user. A virtual table is created by joining tables on primary keys.
+--                This stored view eliminates the need for stakeholders to write complex queries.
+-- OBSERVATIONS:  Herein, I've joined the product table and the customer table.
+--                Herein, I've joined the orders table and the customer table.
+-- INSIGHTS:	  
 
 -- List of views to be created are "veh_prod_cust_v" , "veh_ord_cust_v"
+
+DROP VIEW IF EXISTS veh_prod_cust_v;
+
+CREATE VIEW veh_prod_cust_v AS
+SELECT 
+	p.product_id,
+    p.vehicle_maker,
+    p.vehicle_model,
+    p.vehicle_color,
+    p.vehicle_model_year,
+    p.vehicle_price,
+    c.customer_id,
+    c.customer_name,
+    c.gender,
+    c.job_title,
+    c.phone_number,
+    c.email_address,
+	c.city,
+    c.country,
+    c.state,
+	c.customer_address,
+	c.postal_code,
+    c.credit_card_type,
+    c.credit_card_number
+FROM product_t as p
+INNER JOIN order_t as o
+    ON p.product_id = o.product_id
+INNER JOIN customer_t as c
+    ON o.customer_id = c.customer_id;
+
+-- Create a view rep_vict_v-
+
+DROP VIEW IF EXISTS veh_ord_cust_v;
+
+CREATE VIEW veh_ord_cust_v AS
+SELECT 
+	o.order_id,
+    o.quantity,
+    o.order_date,
+    o.ship_date,
+    o.discount,
+    o.ship_mode,
+    o.shipping,
+    o.customer_feedback,
+    o.quarter_number,
+    c.customer_id,
+    c.customer_name,
+    c.gender,
+    c.job_title,
+    c.phone_number,
+    c.email_address,
+	c.city,
+    c.country,
+    c.state,
+	c.customer_address,
+	c.postal_code,
+    c.credit_card_type,
+    c.credit_card_number
+FROM order_t as o
+INNER JOIN customer_t as c
+    ON o.customer_id = c.customer_id;
 
 
 /*-----------------------------------------------------------------------------------------------------------------------------------
